@@ -1,0 +1,282 @@
+<html>
+  <head>
+    <title>robocup</title>
+    <style>
+			body {
+				font-family: Monospace;
+				background-color: #000;
+				margin: 0px;
+				overflow: hidden;
+			}
+		</style>
+    <script type="text/javascript" src="/js/Three.js"></script>
+    <script type="text/javascript" src="/js/GeodeFace.js"></script>
+    <script type="text/javascript" src="http://code.jquery.com/jquery.min.js"></script>
+
+		<script src="/js/shaders/CopyShader.js"></script>
+		<script src="/js/shaders/DotScreenShader.js"></script>
+		<script src="/js/shaders/RGBShiftShader.js"></script>
+    <script src="/js/shaders/BleachBypassShader.js"></script>
+    <script src="/js/shaders/HorizontalBlurShader.js"></script>
+    <script src="/js/shaders/VerticalBlurShader.js"></script>    
+
+		<script src="/js/postprocessing/EffectComposer.js"></script>
+		<script src="/js/postprocessing/RenderPass.js"></script>
+		<script src="/js/postprocessing/MaskPass.js"></script>
+		<script src="/js/postprocessing/ShaderPass.js"></script>
+
+
+
+	<script>
+$(document).ready(function(){		
+var container, stats;
+var camera, scene, renderer, composer;
+var mouseX = 0, mouseY = 0;
+var width  = window.innerWidth;
+var height = window.innerHeight;
+var centerX = width / 2;
+var centerY = height / 2;
+var xRotationIncrement = (Math.round(Math.random())*2 -1) * Math.random()*0.02;
+var yRotationIncrement = (Math.round(Math.random())*2 -1) * Math.random()*0.02;
+var zRotationIncrement = (Math.round(Math.random())*2 -1) * Math.random()*0.02;
+var parent;
+var mesh;
+var mesh2
+var fillBool = false;
+
+function hasWebGL() {
+  try {
+    return !! window.WebGLRenderingContext &&
+	   !! document.createElement( 'canvas' )
+		      .getContext( 'experimental-webgl' );
+  } catch( e ) { return false; } 
+}
+
+var faces = [];
+
+function createScene( ) {
+  container = document.getElementById('geode');
+  camera = new THREE.PerspectiveCamera( 50, width / height, 1, 5000);
+  camera.z=2000;
+
+  scene = new THREE.Scene();
+
+  var ambient = new THREE.AmbientLight( 0x333333 );
+  scene.add(ambient);
+  var pointLight = new THREE.PointLight(0xffffff,2);
+  scene.add(pointLight);  
+  
+
+  
+  if (hasWebGL()) {
+    renderer = new THREE.WebGLRenderer();
+  } else {
+    renderer = new THREE.CanvasRenderer();
+  }
+  renderer.setSize(width, height);
+  container.appendChild(renderer.domElement);
+  
+  parent = new THREE.Object3D();
+  parent.position.set(0,0,-200);
+  parent.scale.set(75,75,75);
+  
+  //post processing?
+	composer = new THREE.EffectComposer(renderer);
+	composer.addPass( new THREE.RenderPass( scene, camera ) );
+
+  var effect = new THREE.ShaderPass( THREE.DotScreenShader );
+  effect.uniforms[ 'scale' ].value = 10;
+//  effect.uniforms[ 'angle' ].value = 0.5;
+  composer.addPass( effect );
+  
+  var effect = new THREE.ShaderPass( THREE.HorizontalBlurShader );
+  effect.uniforms[ 'h' ].value = 0.15/width;
+  composer.addPass( effect );  
+  
+  var effect = new THREE.ShaderPass( THREE.VerticalBlurShader );
+  effect.uniforms[ 'v' ].value = 0.15/width;
+  composer.addPass( effect );
+  
+  var effect = new THREE.ShaderPass( THREE.RGBShiftShader );
+  effect.uniforms[ 'amount' ].value = 0.0020;
+  effect.uniforms[ 'angle' ].value = 0.5;
+  composer.addPass( effect );
+
+  var effect = new THREE.ShaderPass( THREE.BleachBypassShader );
+  effect.uniforms[ 'opacity' ].value = 0.25;
+  composer.addPass( effect );
+
+
+  effect.renderToScreen = true;
+
+  var i;
+  var NUM_POINTS = 5 + Math.floor(Math.random()*100);
+
+  var xs = [], ys = [], zs = [], aff = [];
+
+  var inc = Math.PI * (3 - Math.sqrt(5));
+  var off = 2 / NUM_POINTS;
+
+  var hull_request_data = NUM_POINTS ;
+  for (i = 0; i < NUM_POINTS; i++) {
+    var z = i * off - 1 + (off / 2);
+    var r = Math.sqrt(1 - z*z);
+    var t =  i * inc; 
+    
+    xs.push(r * Math.cos(t));
+    ys.push(r * Math.sin(t));
+    zs.push(z);
+    aff.push(r);
+    hull_request_data += "," + xs[i].toFixed(4) +  "," + ys[i].toFixed(4) +  "," + zs[i].toFixed(4);
+  }
+
+  $.ajax("/hull?data=" + hull_request_data, {
+    dataType: "text",
+    success: function(data, textStatus, jqXHR) {
+      var lines = data.split("\n");
+      var num = lines[0];
+      var i;
+      for (i = 1; i <= num; i++) {
+	var which = lines[i].split(" ");
+	var w0 = which[0], w1 = which[1], w2 = which[2];
+        faces.push(
+	  new GeodeFace([[w0, aff[w0]*Math.random(), xs[w0], ys[w0], zs[w0]],
+			 [w1, aff[w1], xs[w1], ys[w1], zs[w1]],
+			 [w2, aff[w2], xs[w2], ys[w2], zs[w2]]])
+	);
+	faces[faces.length - 1].dynamic = true;
+
+
+  mesh = new THREE.Mesh(faces[faces.length - 1],
+    new THREE.MeshLambertMaterial({transparent:true, ambient: 0xffffff,shininess:1000,reflectivity:0xffffff, opacity:0.2, color: Math.floor(Math.random()*16777215), wireframe: false, wireframeLinewidth: 1}));
+    parent.add(mesh);
+
+  mesh2 = new THREE.Mesh(faces[faces.length - 1],
+    new THREE.MeshBasicMaterial( { color: 0x00ddff, wireframe: true } ));
+    parent.add(mesh2);
+	
+	
+      }
+      scene.add(parent);
+      document.addEventListener('mousemove', onDocumentMouseMove, false );
+//      document.addEventListener('touchmove', onDocumentMouseMove, false );
+      document.addEventListener('mousedown', onDocumentMouseDown, false );      
+      document.addEventListener('mousewheel', onDocumentMouseWheel, false );      
+      window.addEventListener('resize', onWindowResize, false );
+      animate();
+
+    }
+  });
+}
+
+createScene();
+
+function onWindowResize() {
+  width = window.innerWidth;
+  height = window.innerHeight;
+
+  centerX = width / 2;
+  centerY = height / 2;
+
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+
+  renderer.setSize( width, height );
+}
+
+function onDocumentMouseMove( event ) {
+  var clientX, clientY;
+  if (event.touches) {
+    clientX = event.touches[0].clientX;
+    clientY = event.touches[0].clientY;
+  } else {
+    clientX = event.clientX;
+    clientY = event.clientY;
+  }
+  mouseX = ( clientX - centerX ) / 2;
+  mouseY = ( clientY - centerY ) / 2;
+  var cur_dude = ((Math.abs(Math.floor(mouseX)) % (parent.children.length/2) ))*2
+  var myOpacity;
+  if(fillBool == true){myOpacity = 0.05;}
+  else{myOpacity = 0.9;}
+  parent.children[cur_dude].material.opacity = myOpacity;
+}
+
+function onDocumentMouseDown( event ) {
+  var myOpacity;
+  if(fillBool == true){
+    myOpacity = 0.05;
+    fillBool = false;
+    }
+  else{
+    myOpacity = 0.9;
+    fillBool = true;
+  }
+  for(var i=0;i<parent.children.length; i = i + 2){
+    parent.children[i].material.opacity = myOpacity;}
+  console.log(fillBool)
+}
+
+function onDocumentMouseWheel( event ) {
+    camera.translateZ( event.wheelDeltaY * .05 );
+}
+
+
+function animate() {
+  requestAnimationFrame( animate );
+  render();
+}
+
+function render() {
+//    camera.position.x += ( mouseX - camera.position.x ) * .05;
+// camera.position.y += ( - mouseY - camera.position.y ) * .05;
+//  camera.lookAt( scene.position );
+
+
+//   parent.rotation.y = 
+
+//  parent.rotation.x += xRotationIncrement;
+    parent.rotation.y += yRotationIncrement * (mouseX * -0.03);
+//  parent.rotation.z += zRotationIncrement;
+
+
+//    renderer.render( scene, camera );
+    composer.render()    
+}
+
+function cartesianToSpherical(v) {
+  var r = Math.sqrt(v.x*v.x + v.y*v.y+ v.z*v.z);
+  return { r: r,
+	   t: Math.acos(v.z / r),
+ 	   p: Math.atan2(v.y, v.x) };
+}
+
+function sphericalToCartesian(v) {
+  var t = v.r * Math.sin(v.t);
+  return { x: t * Math.cos(v.p),
+ 	   y: t * Math.sin(v.p),
+	   z: v.r * Math.cos(v.t) };
+}
+
+
+function moveAlongSphere(vertex, tgt, distance) {
+  var v_s = cartesianToSpherical(vertex);
+  var t_s = cartesianToSpherical(tgt);
+
+  var moved = { r: v_s.r,
+		t: v_s.t + (t_s.t - v_s.t) * distance,
+		p: v_s.t + (t_s.t - v_s.t) * distance };
+
+  var moved_c = sphericalToCartesian(moved);
+  vertex.x = moved_c.x;
+  vertex.y = moved_c.y;
+  vertex.z = moved_c.z;
+}
+});
+	</script>
+  </head>
+  <body>
+    <div id="geode">
+    </div>
+  </body>
+</html>
