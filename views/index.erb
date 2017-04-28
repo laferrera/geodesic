@@ -4,7 +4,7 @@
     <style>
 			body {
 				font-family: Monospace;
-				background-color: #000;
+        background-color: #000;
 				margin: 0px;
 				overflow: hidden;
 			}
@@ -28,7 +28,7 @@
 
 
 	<script>
-$(document).ready(function(){		
+
 var container, stats;
 var camera, scene, renderer, composer;
 var mouseX = 0, mouseY = 0;
@@ -39,10 +39,13 @@ var centerY = height / 2;
 var xRotationIncrement = (Math.round(Math.random())*2 -1) * Math.random()*0.02;
 var yRotationIncrement = (Math.round(Math.random())*2 -1) * Math.random()*0.02;
 var zRotationIncrement = (Math.round(Math.random())*2 -1) * Math.random()*0.02;
-var parent;
 var mesh;
 var mesh2
 var fillBool = false;
+var faces = [];
+var parent;
+var xs = [], ys = [], zs = [],aff = [];
+
 
 function hasWebGL() {
   try {
@@ -52,7 +55,6 @@ function hasWebGL() {
   } catch( e ) { return false; } 
 }
 
-var faces = [];
 
 function createScene( ) {
   container = document.getElementById('geode');
@@ -75,18 +77,46 @@ function createScene( ) {
   }
   renderer.setSize(width, height);
   container.appendChild(renderer.domElement);
-  
-  parent = new THREE.Object3D();
-  parent.position.set(0,0,-200);
-  parent.scale.set(75,75,75);
-  
+    
   //post processing?
 	composer = new THREE.EffectComposer(renderer);
 	composer.addPass( new THREE.RenderPass( scene, camera ) );
+}
 
+var buildHullQuery = function(){
+  var i;
+  var NUM_POINTS = 5 + Math.floor(Math.random()*100);
+
+  var inc = Math.PI * (3 - Math.sqrt(5));
+  var off = 2 / NUM_POINTS;
+  xs = [];
+  ys = [];
+  zs = [];
+  aff = [];
+
+
+  var hull_request_data = NUM_POINTS ;
+  for (i = 0; i < NUM_POINTS; i++) {
+    var z = i * off - 1 + (off / 2);
+    var r = Math.sqrt(1 - z*z);
+    var t =  i * inc; 
+    
+    xs.push(r * Math.cos(t));
+    ys.push(r * Math.sin(t));
+    zs.push(z);
+    aff.push(r);
+    hull_request_data += "," + xs[i].toFixed(4) +  "," + ys[i].toFixed(4) +  "," + zs[i].toFixed(4);
+  }
+  return hull_request_data;
+}
+
+
+
+
+var addEffects = function(){
   var effect = new THREE.ShaderPass( THREE.DotScreenShader );
   effect.uniforms[ 'scale' ].value = 10;
-//  effect.uniforms[ 'angle' ].value = 0.5;
+  effect.uniforms[ 'angle' ].value = 0.5;
   composer.addPass( effect );
   
   var effect = new THREE.ShaderPass( THREE.HorizontalBlurShader );
@@ -106,70 +136,23 @@ function createScene( ) {
   effect.uniforms[ 'opacity' ].value = 0.25;
   composer.addPass( effect );
 
-
   effect.renderToScreen = true;
+}
 
-  var i;
-  var NUM_POINTS = 5 + Math.floor(Math.random()*100);
-
-  var xs = [], ys = [], zs = [], aff = [];
-
-  var inc = Math.PI * (3 - Math.sqrt(5));
-  var off = 2 / NUM_POINTS;
-
-  var hull_request_data = NUM_POINTS ;
-  for (i = 0; i < NUM_POINTS; i++) {
-    var z = i * off - 1 + (off / 2);
-    var r = Math.sqrt(1 - z*z);
-    var t =  i * inc; 
-    
-    xs.push(r * Math.cos(t));
-    ys.push(r * Math.sin(t));
-    zs.push(z);
-    aff.push(r);
-    hull_request_data += "," + xs[i].toFixed(4) +  "," + ys[i].toFixed(4) +  "," + zs[i].toFixed(4);
-  }
-
-  $.ajax("/hull?data=" + hull_request_data, {
-    dataType: "text",
-    success: function(data, textStatus, jqXHR) {
-      var lines = data.split("\n");
-      var num = lines[0];
-      var i;
-      for (i = 1; i <= num; i++) {
-	var which = lines[i].split(" ");
-	var w0 = which[0], w1 = which[1], w2 = which[2];
-        faces.push(
-	  new GeodeFace([[w0, aff[w0]*Math.random(), xs[w0], ys[w0], zs[w0]],
-			 [w1, aff[w1], xs[w1], ys[w1], zs[w1]],
-			 [w2, aff[w2], xs[w2], ys[w2], zs[w2]]])
-	);
-	faces[faces.length - 1].dynamic = true;
-
-
-  mesh = new THREE.Mesh(faces[faces.length - 1],
-    new THREE.MeshLambertMaterial({transparent:true, ambient: 0xffffff,shininess:1000,reflectivity:0xffffff, opacity:0.2, color: Math.floor(Math.random()*16777215), wireframe: false, wireframeLinewidth: 1}));
-    parent.add(mesh);
-
-  mesh2 = new THREE.Mesh(faces[faces.length - 1],
-    new THREE.MeshBasicMaterial( { color: 0x00ddff, wireframe: true } ));
-    parent.add(mesh2);
-	
-	
-      }
-      scene.add(parent);
+var addListeners = function(){
       document.addEventListener('mousemove', onDocumentMouseMove, false );
 //      document.addEventListener('touchmove', onDocumentMouseMove, false );
       document.addEventListener('mousedown', onDocumentMouseDown, false );      
       document.addEventListener('mousewheel', onDocumentMouseWheel, false );      
-      window.addEventListener('resize', onWindowResize, false );
-      animate();
-
-    }
-  });
+      window.addEventListener('resize', onWindowResize, false );  
 }
 
-createScene();
+
+
+
+
+
+
 
 function onWindowResize() {
   width = window.innerWidth;
@@ -272,6 +255,71 @@ function moveAlongSphere(vertex, tgt, distance) {
   vertex.y = moved_c.y;
   vertex.z = moved_c.z;
 }
+
+
+
+var addGeode = function(){
+  parent = new THREE.Object3D();
+  parent.position.set(0,0,-200);
+  parent.scale.set(75,75,75);
+  var hull_request_data = buildHullQuery();
+
+  $.ajax("/hull", {
+    type: 'post',
+    dataType: "text",
+    data: {data:hull_request_data},
+    success: function(data, textStatus, jqXHR) {
+      faces = [];
+      var lines = data.split("\n");
+      var num = lines[0];
+      var i;
+      for (i = 1; i <= num; i++) {
+      	var which = lines[i].split(" ");
+      	var w0 = which[0], w1 = which[1], w2 = which[2];
+        faces.push(
+      	  new GeodeFace([[w0, aff[w0]*Math.random(), xs[w0], ys[w0], zs[w0]],
+                  			 [w1, aff[w1], xs[w1], ys[w1], zs[w1]],
+                  			 [w2, aff[w2], xs[w2], ys[w2], zs[w2]]]
+                        )
+      	);
+      	faces[faces.length - 1].dynamic = true;
+        mesh = new THREE.Mesh(faces[faces.length - 1],
+        new THREE.MeshLambertMaterial({transparent:true, ambient: 0xffffff,shininess:1000,reflectivity:0xffffff, opacity:0.2, color: Math.floor(Math.random()*16777215), wireframe: false, wireframeLinewidth: 1}));
+    mesh2 = new THREE.Mesh(faces[faces.length - 1],
+              new THREE.MeshBasicMaterial( { color: 0x00ddff, wireframe: true } ));
+    parent.add(mesh);
+    parent.add(mesh2);
+	
+	
+      } //end for loop
+      scene.add(parent);
+
+    }
+  });
+}
+
+var removeGeode = function(){
+        parent.remove(mesh);
+        parent.remove(mesh2)
+        scene.remove(parent);
+}
+
+
+
+
+
+
+
+$(document).ready(function(){		
+  createScene();
+  addListeners();
+  addEffects();
+  addGeode();
+  animate();
+  
+  
+  setInterval("removeGeode();addGeode();", 1000);
+  
 });
 	</script>
   </head>

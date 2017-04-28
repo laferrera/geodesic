@@ -6,7 +6,7 @@ get '/' do
   erb :index
 end
 
-get '/hull' do
+post '/hull' do
   points = params["data"].split(',')
   num_points = points.shift
   point_data = "3\n" + num_points.to_s + "\n"
